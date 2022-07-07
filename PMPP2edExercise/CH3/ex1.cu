@@ -5,7 +5,7 @@
 const int STRATEGY_ELEM = 0;
 const int STRATEGY_ROW = 1;
 const int STRATEGY_COL = 2;
-const bool DEBUG = true;
+const bool DEBUG = false;
 
 __global__ void oneElementAdd(float *d_A, float *d_B, float *d_C, int n) {
   // exercise 3.1b: one element addition of matricies
