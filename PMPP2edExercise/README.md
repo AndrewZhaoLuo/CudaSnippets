@@ -1,0 +1,1 @@
+Exercises to Programming Massively Parallel Processors: A Hands On Approach 2nd Ed. by David B. Kirk and Wen-mei W. Hwu
