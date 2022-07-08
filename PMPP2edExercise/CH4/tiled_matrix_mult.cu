@@ -163,11 +163,13 @@ std::pair<float *, double> run_code(float *h_A, float *h_B, int mode, int N) {
   case MODE_GPU_NAIVE:
     start = clock();
     matrix_multiplication_naive_cuda<<<dimGrid, dimBlock>>>(d_A, d_B, d_C, N);
+    cudaDeviceSynchronize();
     end = clock();
     break;
   case MODE_GPU_TILED:
     start = clock();
     matrix_multiplication_tiled_cuda<<<dimGrid, dimBlock>>>(d_A, d_B, d_C, N);
+    cudaDeviceSynchronize();
     end = clock();
     break;
   default:
