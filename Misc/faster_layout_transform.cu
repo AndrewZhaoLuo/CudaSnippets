@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
   if (argc >= 2) {
     mode = atoi(argv[1]);
   }
-  runCopyThroughputExperiment(1024, 1024);
-  runTransposeExperiment(1024, 1024, mode);
+  runCopyThroughputExperiment(1024, 1024 * 2);
+  runTransposeExperiment(1024, 1024 * 2, mode);
   return 0;
 }
