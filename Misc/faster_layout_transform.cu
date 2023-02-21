@@ -113,7 +113,11 @@ void doTransposeCUDA(T *h_mat, T *h_matT, int mode) {
     CudaTransposeIntermediateWrapped<T, rows, cols, 32, 1>(d_mat, d_matT);
     break;
   case 3:
-
+    CudaTransposeIntermediateWrapped<T, rows, cols, 16, 1>(d_mat, d_matT);
+    break;
+  case 4:
+    CudaTransposeIntermediateWrapped<T, rows, cols, 64, 1>(d_mat, d_matT);
+    break;
   default:
     printf("Error unknown mode %d\n", mode);
     throw std::invalid_argument("Unknown mode");
@@ -208,9 +212,11 @@ void runCopyThroughputExperiment() {
 
 #define DTYPE __half
 int main(int argc, char **argv) {
-  runCopyThroughputExperiment<DTYPE, 1024, 1024 * 2, 4, 256>();
-  runTransposeExperiment<DTYPE, 1024, 1024 * 2>(0);
-  runTransposeExperiment<DTYPE, 1024, 1024 * 2>(1);
-  runTransposeExperiment<DTYPE, 1024, 1024 * 2>(2);
+  runCopyThroughputExperiment<DTYPE, 1024, 1024, 4, 256>();
+  runTransposeExperiment<DTYPE, 1024, 1024>(0);
+  runTransposeExperiment<DTYPE, 1024, 1024>(1);
+  runTransposeExperiment<DTYPE, 1024, 1024>(2);
+  runTransposeExperiment<DTYPE, 1024, 1024>(3);
+  runTransposeExperiment<DTYPE, 1024, 1024>(4);
   return 0;
 }
