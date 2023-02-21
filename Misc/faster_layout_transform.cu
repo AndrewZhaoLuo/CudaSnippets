@@ -3,16 +3,16 @@ Playing around with implementing layout transform / transposition efficiently
 */
 #include <assert.h>
 #include <cuda.h>
-#include <stdio.h>
-#include <stdexcept>
 #include <cuda_fp16.h>
+#include <stdexcept>
+#include <stdio.h>
 
 // TODO: monitor for bank conflicts
 // Support FP16 datatype
-// Compare bank conflicts for FP32 vs FP16 
+// Compare bank conflicts for FP32 vs FP16
 // Do shit...
 
-template<typename T, int copy_loads_per_thread>
+template <typename T, int copy_loads_per_thread>
 __global__ void CudaBaselineCopy(T *mat1, T *mat2) {
   int start_index_t0 = blockIdx.x * blockDim.x * copy_loads_per_thread;
   for (int i = 0; i < copy_loads_per_thread; i++) {
@@ -21,14 +21,17 @@ __global__ void CudaBaselineCopy(T *mat1, T *mat2) {
   }
 }
 
-template<typename T, int copy_loads_per_thread, int rows, int cols, int num_threads_per_block>
+template <typename T, int copy_loads_per_thread, int num_threads_per_block,
+          int rows, int cols>
 void CudaBaselineCopyWrapped(T *d_mat1, T *d_mat2) {
-  int num_blocks = (rows * cols) / (copy_loads_per_thread * num_threads_per_block);
-  CudaBaselineCopy<T, copy_loads_per_thread><<<num_blocks, num_threads_per_block>>>(
-      d_mat1, d_mat2);
+  int num_blocks =
+      (rows * cols) / (copy_loads_per_thread * num_threads_per_block);
+  CudaBaselineCopy<T, copy_loads_per_thread>
+      <<<num_blocks, num_threads_per_block>>>(d_mat1, d_mat2);
 }
 
-template<typename T, int rows, int cols, int loads_per_thread, int num_threads_per_block>
+template <typename T, int rows, int cols, int loads_per_thread,
+          int num_threads_per_block>
 __global__ void CudaTransposeNaive(T *mat, T *matT) {
   int y_start = blockIdx.y * loads_per_thread;
   int x_start = blockIdx.x * num_threads_per_block + threadIdx.x;
@@ -37,23 +40,24 @@ __global__ void CudaTransposeNaive(T *mat, T *matT) {
   }
 }
 
-template<typename T, int rows, int cols, int tile_size, int padding_shared>
+template <typename T, int rows, int cols, int tile_size, int padding_shared>
 __global__ void CudaTransposeSharedIntermediate(T *mat, T *matT) {
-  // num threads = tile_size each thread will load and thread tile_size elements.
-  __shared__ float tile[tile_size][tile_size + padding_shared]; 
+  // num threads = tile_size each thread will load and thread tile_size
+  // elements.
+  __shared__ float tile[tile_size][tile_size + padding_shared];
 
-  // index in mat 
+  // index in mat
   int y_start = blockIdx.y * tile_size;
   int x_start = blockIdx.x * tile_size + threadIdx.x;
 
-  // cooperatively load shared memory, do not transpose yet 
+  // cooperatively load shared memory, do not transpose yet
   for (int i = 0; i < tile_size; i++) {
     tile[i][threadIdx.x] = mat[(y_start + i) * cols + x_start];
   }
 
   __syncthreads();
 
-  // index in matT 
+  // index in matT
   x_start = blockIdx.y * tile_size + threadIdx.x;
   y_start = blockIdx.x * tile_size;
   for (int i = 0; i < tile_size; i++) {
@@ -62,7 +66,8 @@ __global__ void CudaTransposeSharedIntermediate(T *mat, T *matT) {
   }
 }
 
-template<typename T, int rows, int cols, int loads_per_thread, int num_threads_per_block>
+template <typename T, int rows, int cols, int loads_per_thread,
+          int num_threads_per_block>
 void CudaTransposeNaiveWrapped(T *d_mat, T *d_matT) {
   int num_blocks_y = rows / loads_per_thread;
   assert(rows % loads_per_thread == 0);
@@ -70,11 +75,11 @@ void CudaTransposeNaiveWrapped(T *d_mat, T *d_matT) {
   assert(cols % num_threads_per_block == 0);
   dim3 dimBlock(num_blocks_x, num_blocks_y, 1);
   dim3 dimGrid(num_threads_per_block, 1, 1);
-  CudaTransposeNaive<T, rows, cols, loads_per_thread, num_threads_per_block><<<dimBlock, dimGrid>>>(
-      d_mat, d_matT);
+  CudaTransposeNaive<T, rows, cols, loads_per_thread, num_threads_per_block>
+      <<<dimBlock, dimGrid>>>(d_mat, d_matT);
 }
 
-template<typename T, int rows, int cols, int tile_size, int padding_shared>
+template <typename T, int rows, int cols, int tile_size, int padding_shared>
 void CudaTransposeIntermediateWrapped(T *d_mat, T *d_matT) {
   int num_blocks_y = rows / tile_size;
   assert(rows % tile_size == 0);
@@ -82,11 +87,11 @@ void CudaTransposeIntermediateWrapped(T *d_mat, T *d_matT) {
   assert(cols % tile_size == 0);
   dim3 dimBlock(num_blocks_x, num_blocks_y, 1);
   dim3 dimGrid(tile_size, 1, 1);
-  CudaTransposeSharedIntermediate<T, rows, cols, tile_size, padding_shared><<<dimBlock, dimGrid>>>(
-      d_mat, d_matT);
+  CudaTransposeSharedIntermediate<T, rows, cols, tile_size, padding_shared>
+      <<<dimBlock, dimGrid>>>(d_mat, d_matT);
 }
 
-template<typename T, int rows, int cols>
+template <typename T, int rows, int cols>
 void doTransposeCUDA(T *h_mat, T *h_matT, int mode) {
   int matrix_size = rows * cols * sizeof(T);
   T *d_mat, *d_matT;
@@ -97,21 +102,21 @@ void doTransposeCUDA(T *h_mat, T *h_matT, int mode) {
   cudaMemcpy(d_matT, h_matT, matrix_size, cudaMemcpyHostToDevice);
 
   // Call kernel
-  switch(mode) {
-    case 0:
-      CudaTransposeNaiveWrapped<T, rows, cols, 4, 1024>(d_mat, d_matT);
-      break;
-    case 1:
-      CudaTransposeIntermediateWrapped<T, rows, cols, 32, 0>(d_mat, d_matT);
-      break;
-    case 2:
-      CudaTransposeIntermediateWrapped<T, rows, cols, 32, 1>(d_mat, d_matT);
-      break;
-    case 3:
+  switch (mode) {
+  case 0:
+    CudaTransposeNaiveWrapped<T, rows, cols, 4, 1024>(d_mat, d_matT);
+    break;
+  case 1:
+    CudaTransposeIntermediateWrapped<T, rows, cols, 32, 0>(d_mat, d_matT);
+    break;
+  case 2:
+    CudaTransposeIntermediateWrapped<T, rows, cols, 32, 1>(d_mat, d_matT);
+    break;
+  case 3:
 
-    default:
-      printf("Error unknown mode %d\n", mode);
-      throw std::invalid_argument("Unknown mode");
+  default:
+    printf("Error unknown mode %d\n", mode);
+    throw std::invalid_argument("Unknown mode");
   }
   cudaMemcpy(h_matT, d_matT, matrix_size, cudaMemcpyDeviceToHost);
   cudaFree(d_mat);
@@ -131,10 +136,8 @@ void doTransposeCPU(T *h_mat, T *h_matT) {
 template <typename T, int matrix_rows, int matrix_cols>
 void runTransposeExperiment(int mode) {
   T *h_mat = (T *)malloc(sizeof(T) * matrix_rows * matrix_cols);
-  T *h_matT_experimental =
-      (T *)malloc(sizeof(T) * matrix_rows * matrix_cols);
-  T *h_matT_control =
-      (T *)malloc(sizeof(T) * matrix_rows * matrix_cols);
+  T *h_matT_experimental = (T *)malloc(sizeof(T) * matrix_rows * matrix_cols);
+  T *h_matT_control = (T *)malloc(sizeof(T) * matrix_rows * matrix_cols);
 
   for (int i = 0; i < matrix_rows * matrix_cols; i++) {
     h_mat[i] = rand() % 100;
@@ -146,7 +149,8 @@ void runTransposeExperiment(int mode) {
   double cpu_time_used;
 
   start = clock();
-  doTransposeCUDA<T, matrix_rows, matrix_cols>(h_mat, h_matT_experimental, mode);
+  doTransposeCUDA<T, matrix_rows, matrix_cols>(h_mat, h_matT_experimental,
+                                               mode);
   cudaDeviceSynchronize();
   end = clock();
   cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
@@ -158,9 +162,8 @@ void runTransposeExperiment(int mode) {
   cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
   printf("CPU time %.5f (s)\n", cpu_time_used);
 
-
-  char* h_mat1_check = (char*) h_matT_experimental;
-  char* h_mat2_check = (char*) h_matT_control;
+  char *h_mat1_check = (char *)h_matT_experimental;
+  char *h_mat2_check = (char *)h_matT_control;
   for (int i = 0; i < matrix_rows * matrix_cols * sizeof(T); i++) {
     assert(h_mat1_check[i] == h_mat2_check[i]);
   }
@@ -170,7 +173,8 @@ void runTransposeExperiment(int mode) {
   free(h_matT_control);
 }
 
-template <typename T, int matrix_rows, int matrix_cols>
+template <typename T, int matrix_rows, int matrix_cols,
+          int copy_loads_per_thread, int num_threads_per_block>
 void runCopyThroughputExperiment() {
   int matrix_size_bytes = sizeof(T) * matrix_cols * matrix_rows;
   T *h_mat1 = (T *)malloc(sizeof(T) * matrix_size_bytes);
@@ -188,25 +192,25 @@ void runCopyThroughputExperiment() {
   cudaMemcpy(d_mat2, h_mat2, matrix_size_bytes, cudaMemcpyHostToDevice);
 
   // Call kernel
-  CudaBaselineCopyWrapped<T, 1, matrix_rows, matrix_cols, 256>(d_mat1, d_mat2);
+  CudaBaselineCopyWrapped<T, copy_loads_per_thread, num_threads_per_block,
+                          matrix_rows, matrix_cols>(d_mat1, d_mat2);
 
   cudaMemcpy(h_mat2, d_mat2, matrix_size_bytes, cudaMemcpyDeviceToHost);
   cudaFree(d_mat1);
   cudaFree(d_mat2);
 
-  char* h_mat1_check = (char*) h_mat1;
-  char* h_mat2_check = (char*) h_mat2;
+  char *h_mat1_check = (char *)h_mat1;
+  char *h_mat2_check = (char *)h_mat2;
   for (int i = 0; i < matrix_rows * matrix_cols * sizeof(T); i++) {
     assert(h_mat1_check[i] == h_mat2_check[i]);
   }
 }
 
-int main(int argc, char** argv) {
-  int mode = 0;
-  if (argc >= 2) {
-    mode = atoi(argv[1]);
-  }
-  runCopyThroughputExperiment<float, 1024, 1024*2>();
-  runTransposeExperiment<float, 1024, 1024 * 2>(mode);
+#define DTYPE __half
+int main(int argc, char **argv) {
+  runCopyThroughputExperiment<DTYPE, 1024, 1024 * 2, 4, 256>();
+  runTransposeExperiment<DTYPE, 1024, 1024 * 2>(0);
+  runTransposeExperiment<DTYPE, 1024, 1024 * 2>(1);
+  runTransposeExperiment<DTYPE, 1024, 1024 * 2>(2);
   return 0;
 }
